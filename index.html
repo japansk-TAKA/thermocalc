@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="ja" color-scheme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>ThermoCalc — 術中低体温リスク評価</title>
+<style>
+/* ========== DESIGN TOKENS ==========
+   Background: cool-dark blue-grey (#111318) — surgical monitor feel
+   Card: #1a1f2a — slight lift
+   Inset: #222838 — deep input fields
+   Accent: #5fcfcf — cyan, custom (NOT tailwind default) — thermal monitor hue
+   Text primary: #dde4f0 — off-white, slight cool
+   Text secondary: #6b7a99 — ~40% of primary brightness
+   Font weight: 300 (labels) / 700 (values) ONLY
+   Border-radius: 4px unified — maximum tool-feel
+   Spacing: intentional void around risk display
+*/
+:root {
+  --bg: #111318;
+  --card: #1a1f2a;
+  --inset: #222838;
+  --accent: #5fcfcf;
+  --accent-dim: rgba(95,207,207,0.15);
+  --accent-border: rgba(95,207,207,0.35);
+  --text: #dde4f0;
+  --text-sec: #6b7a99;
+  --radius: 4px;
+  --tap: 44px;
+  --risk-low: #4caf8a;
+  --risk-low-bg: rgba(76,175,138,0.12);
+  --risk-low-border: rgba(76,175,138,0.3);
+  --risk-med: #e8b84b;
+  --risk-med-bg: rgba(232,184,75,0.12);
+  --risk-med-border: rgba(232,184,75,0.3);
+  --risk-high: #e05c5c;
+  --risk-high-bg: rgba(224,92,92,0.12);
+  --risk-high-border: rgba(224,92,92,0.3);
+  --alert-bg: rgba(224,92,92,0.18);
+  --alert-border: rgba(224,92,92,0.5);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 1.5;
+  min-height: 100dvh;
+  padding: 0 0 48px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ====== HEADER ====== */
+.app-header {
+  padding: 24px 20px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.app-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.app-subtitle {
+  font-size: 11px;
+  font-weight: 300;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-sec);
+  margin-top: 3px;
+}
+
+/* ====== MAIN LAYOUT ====== */
+.main {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+/* ====== RISK HERO ====== */
+.risk-hero {
+  padding: 32px 0 24px;
+  text-align: center;
+}
+.risk-label-top {
+  font-size: 10px;
+  font-weight: 300;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-sec);
+  margin-bottom: 10px;
+}
+.risk-value {
+  font-size: 56px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: var(--text-sec);
+  transition: color 0.2s ease;
+}
+.risk-value.low  { color: var(--risk-low); }
+.risk-value.med  { color: var(--risk-med); }
+.risk-value.high { color: var(--risk-high); }
+
+.risk-badge {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 4px 14px;
+  border-radius: var(--radius);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: rgba(107,122,153,0.15);
+  border: 1px solid rgba(107,122,153,0.25);
+  color: var(--text-sec);
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+.risk-badge.low  { background: var(--risk-low-bg);  border-color: var(--risk-low-border);  color: var(--risk-low); }
+.risk-badge.med  { background: var(--risk-med-bg);  border-color: var(--risk-med-border);  color: var(--risk-med); }
+.risk-badge.high { background: var(--risk-high-bg); border-color: var(--risk-high-border); color: var(--risk-high); }
+
+.risk-score-detail {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 300;
+  color: var(--text-sec);
+}
+
+/* ====== CARDS ====== */
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  border: 1px solid rgba(255,255,255,0.06);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.card-title {
+  font-size: 10px;
+  font-weight: 300;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-sec);
+  margin-bottom: 14px;
+}
+
+/* ====== INPUTS ====== */
+.field {
+  margin-bottom: 14px;
+}
+.field:last-child { margin-bottom: 0; }
+
+.field-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 300;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-sec);
+  margin-bottom: 6px;
+}
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.field-unit {
+  font-size: 11px;
+  font-weight: 300;
+  color: var(--text-sec);
+  white-space: nowrap;
+}
+
+input[type="number"] {
+  background: var(--inset);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  font-family: inherit;
+  padding: 0 12px;
+  height: var(--tap);
+  min-height: var(--tap);
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: border-color 0.15s;
+  letter-spacing: -0.02em;
+}
+input[type="number"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+input[type="number"]::placeholder { color: var(--text-sec); font-weight: 300; }
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+/* Surgery type selector */
+.seg-group {
+  display: flex;
+  gap: 4px;
+}
+.seg-btn {
+  flex: 1;
+  background: var(--inset);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius);
+  color: var(--text-sec);
+  font-size: 12px;
+  font-weight: 300;
+  font-family: inherit;
+  min-height: var(--tap);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  padding: 0 4px;
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+.seg-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.seg-btn[aria-pressed="true"] {
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* Anesthesia type selector */
+.ane-group {
+  display: flex;
+  gap: 4px;
+}
+.ane-btn {
+  flex: 1;
+  background: var(--inset);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius);
+  color: var(--text-sec);
+  font-size: 12px;
+  font-weight: 300;
+  font-family: inherit;
+  min-height: var(--tap);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  padding: 0 4px;
+  text-align: center;
+}
+.ane-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.ane-btn[aria-pressed="true"] {
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* ====== MANAGEMENT PANEL ====== */
+.mgmt-panel {
+  background: var(--card);
+  border-radius: var(--radius);
+  border: 1px solid rgba(255,255,255,0.06);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.mgmt-header {
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.mgmt-title {
+  font-size: 10px;
+  font-weight: 300;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-sec);
+}
+.mgmt-body {
+  padding: 14px 16px;
+}
+.mgmt-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+.mgmt-row:last-child { margin-bottom: 0; }
+.mgmt-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-sec);
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+.mgmt-dot.accent { background: var(--accent); }
+.mgmt-dot.warn   { background: var(--risk-med); }
+.mgmt-dot.danger { background: var(--risk-high); }
+.mgmt-text {
+  font-size: 13px;
+  font-weight: 300;
+  color: var(--text);
+  line-height: 1.4;
+}
+.mgmt-text strong {
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ====== TEMP TRACKER ====== */
+.temp-section { margin-bottom: 12px; }
+.temp-tracker-toggle {
+  width: 100%;
+  background: var(--card);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius);
+  color: var(--text-sec);
+  font-size: 12px;
+  font-weight: 300;
+  font-family: inherit;
+  min-height: var(--tap);
+  cursor: pointer;
+  padding: 0 16px;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  letter-spacing: 0.03em;
+  transition: border-color 0.15s;
+}
+.temp-tracker-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.temp-tracker-toggle[aria-expanded="true"] {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-color: var(--accent-border);
+  color: var(--text);
+}
+.toggle-icon {
+  font-size: 16px;
+  color: var(--text-sec);
+  transition: transform 0.2s ease;
+}
+.temp-tracker-toggle[aria-expanded="true"] .toggle-icon {
+  transform: rotate(180deg);
+}
+.temp-tracker-body {
+  background: var(--card);
+  border: 1px solid var(--accent-border);
+  border-top: none;
+  border-bottom-left-radius: var(--radius);
+  border-bottom-right-radius: var(--radius);
+  padding: 14px 16px;
+  display: none;
+}
+.temp-tracker-body.open { display: block; }
+
+.temp-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.temp-entry-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.temp-time-label {
+  font-size: 11px;
+  font-weight: 300;
+  color: var(--text-sec);
+  min-width: 60px;
+  letter-spacing: 0.03em;
+}
+.temp-input-wrap {
+  flex: 1;
+  position: relative;
+}
+.temp-input {
+  background: var(--inset);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  padding: 0 42px 0 12px;
+  height: 40px;
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: border-color 0.15s;
+  letter-spacing: -0.02em;
+}
+.temp-input:focus { outline: none; border-color: var(--accent); }
+.temp-input.alert-val { border-color: var(--risk-high); }
+.temp-input::-webkit-inner-spin-button,
+.temp-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+.temp-unit {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-weight: 300;
+  color: var(--text-sec);
+  pointer-events: none;
+}
+.temp-alert-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--risk-high);
+  letter-spacing: 0.04em;
+  min-width: 36px;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.btn-add-temp {
+  background: var(--inset);
+  border: 1px dashed rgba(95,207,207,0.3);
+  border-radius: var(--radius);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 300;
+  font-family: inherit;
+  min-height: var(--tap);
+  width: 100%;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-add-temp:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.btn-add-temp:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+}
+
+/* Alert banner */
+.temp-alert-banner {
+  background: var(--alert-bg);
+  border: 1px solid var(--alert-border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  margin-top: 10px;
+  display: none;
+}
+.temp-alert-banner.visible { display: block; }
+.temp-alert-banner-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--risk-high);
+}
+.temp-alert-banner-body {
+  font-size: 12px;
+  font-weight: 300;
+  color: var(--text);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+/* ====== MONITORING INTERVALS ====== */
+.monitor-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  border: 1px solid rgba(255,255,255,0.06);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+.monitor-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.monitor-row:last-child { border-bottom: none; }
+.monitor-phase {
+  font-size: 12px;
+  font-weight: 300;
+  color: var(--text-sec);
+}
+.monitor-interval {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+.monitor-interval.accent { color: var(--accent); }
+
+/* ====== REFERENCE VALUES ====== */
+.ref-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  border: 1px solid rgba(255,255,255,0.06);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+.ref-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.ref-row:last-child { border-bottom: none; }
+.ref-label {
+  font-size: 11px;
+  font-weight: 300;
+  color: var(--text-sec);
+}
+.ref-val {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: -0.01em;
+}
+
+/* ====== SECTION LABEL ====== */
+.section-label {
+  font-size: 10px;
+  font-weight: 300;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-sec);
+  margin: 20px 0 8px;
+}
+
+/* ====== CLEAR BUTTON ====== */
+.btn-clear {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius);
+  color: var(--text-sec);
+  font-size: 12px;
+  font-weight: 300;
+  font-family: inherit;
+  min-height: var(--tap);
+  width: 100%;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  margin-top: 20px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.btn-clear:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.btn-clear:hover {
+  border-color: rgba(255,255,255,0.25);
+  color: var(--text);
+}
+
+/* ====== FOOTER ====== */
+.app-footer {
+  margin-top: 32px;
+  padding: 20px 16px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.disclaimer {
+  font-size: 11px;
+  font-weight: 300;
+  color: var(--text-sec);
+  line-height: 1.6;
+}
+.disclaimer strong { font-weight: 700; color: var(--text-sec); }
+.citation {
+  font-size: 10px;
+  font-weight: 300;
+  color: var(--text-sec);
+  margin-top: 8px;
+  opacity: 0.7;
+}
+
+/* ====== REDUCED MOTION ====== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; }
+}
+
+/* ====== RESPONSIVE ====== */
+@media (max-width: 400px) {
+  .seg-btn { font-size: 11px; padding: 0 2px; }
+  .ane-btn { font-size: 11px; }
+  .risk-value { font-size: 48px; }
+}
+</style>
+</head>
+<body>
+<header class="app-header">
+  <div class="app-title">ThermoCalc</div>
+  <div class="app-subtitle">術中低体温リスク評価 · NICE CG65</div>
+</header>
+
+<main class="main">
+  <!-- RISK HERO -->
+  <section class="risk-hero" aria-live="polite">
+    <div class="risk-label-top">低体温リスク</div>
+    <div class="risk-value" id="risk-value">—</div>
+    <div id="risk-badge" class="risk-badge">入力待ち</div>
+    <div class="risk-score-detail" id="risk-score-detail"></div>
+  </section>
+
+  <!-- INPUT CARD -->
+  <p class="section-label">患者・術式情報</p>
+  <div class="card">
+    <div class="field">
+      <label class="field-label" for="age">年齢</label>
+      <div class="field-row">
+        <input type="number" id="age" inputmode="numeric" placeholder="—" min="0" max="120" aria-label="年齢（歳）">
+        <span class="field-unit">歳</span>
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label" for="bmi">BMI</label>
+      <div class="field-row">
+        <input type="number" id="bmi" inputmode="decimal" placeholder="—" min="10" max="70" step="0.1" aria-label="BMI">
+        <span class="field-unit">kg/m²</span>
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label" for="duration">予定手術時間</label>
+      <div class="field-row">
+        <input type="number" id="duration" inputmode="numeric" placeholder="—" min="0" max="600" aria-label="予定手術時間（分）">
+        <span class="field-unit">分</span>
+      </div>
+    </div>
+    <div class="field">
+      <div class="field-label">術式区分</div>
+      <div class="seg-group" role="group" aria-label="術式区分">
+        <button class="seg-btn" aria-pressed="false" data-surg="superficial" onclick="setSurg(this)">体表</button>
+        <button class="seg-btn" aria-pressed="false" data-surg="mixed" onclick="setSurg(this)">混合</button>
+        <button class="seg-btn" aria-pressed="false" data-surg="cavity" onclick="setSurg(this)">体腔内</button>
+      </div>
+    </div>
+    <div class="field" style="margin-top:14px;">
+      <div class="field-label">麻酔区分</div>
+      <div class="ane-group" role="group" aria-label="麻酔区分">
+        <button class="ane-btn" aria-pressed="false" data-ane="ga" onclick="setAne(this)">全身麻酔</button>
+        <button class="ane-btn" aria-pressed="false" data-ane="regional" onclick="setAne(this)">区域麻酔</button>
+        <button class="ane-btn" aria-pressed="false" data-ane="combined" onclick="setAne(this)">併用</button>
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label" for="baseline-temp">術前体温（任意）</label>
+      <div class="field-row">
+        <input type="number" id="baseline-temp" inputmode="decimal" placeholder="36.5" min="33" max="42" step="0.1" aria-label="術前体温（℃）">
+        <span class="field-unit">°C</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- MANAGEMENT PROTOCOL -->
+  <p class="section-label">管理プロトコル</p>
+  <div class="mgmt-panel" id="mgmt-panel">
+    <div class="mgmt-header">
+      <div class="mgmt-title">推奨加温・管理方針</div>
+    </div>
+    <div class="mgmt-body" id="mgmt-body">
+      <div class="mgmt-row">
+        <div class="mgmt-dot"></div>
+        <div class="mgmt-text">患者情報を入力してください</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MONITORING INTERVALS -->
+  <p class="section-label">体温モニタリング間隔</p>
+  <div class="monitor-card">
+    <div class="card-title">NICE CG65 推奨</div>
+    <div class="monitor-row">
+      <span class="monitor-phase">麻酔導入30分前</span>
+      <span class="monitor-interval accent" id="mon-pre">—</span>
+    </div>
+    <div class="monitor-row">
+      <span class="monitor-phase">導入時</span>
+      <span class="monitor-interval" id="mon-induct">測定</span>
+    </div>
+    <div class="monitor-row">
+      <span class="monitor-phase">術中</span>
+      <span class="monitor-interval accent" id="mon-intraop">—</span>
+    </div>
+    <div class="monitor-row">
+      <span class="monitor-phase">PACU</span>
+      <span class="monitor-interval" id="mon-pacu">15分毎</span>
+    </div>
+  </div>
+
+  <!-- REFERENCE VALUES -->
+  <p class="section-label">目標体温・閾値</p>
+  <div class="ref-card">
+    <div class="card-title">NICE CG65 基準値</div>
+    <div class="ref-row">
+      <span class="ref-label">正常体温（Normothermia）</span>
+      <span class="ref-val">≥ 36.5°C</span>
+    </div>
+    <div class="ref-row">
+      <span class="ref-label">低体温定義</span>
+      <span class="ref-val">&lt; 36.0°C</span>
+    </div>
+    <div class="ref-row">
+      <span class="ref-label">加温開始目標</span>
+      <span class="ref-val">36.0°C 維持</span>
+    </div>
+    <div class="ref-row">
+      <span class="ref-label">術後退室基準（体温）</span>
+      <span class="ref-val">≥ 36.0°C</span>
+    </div>
+  </div>
+
+  <!-- TEMP TRACKER -->
+  <p class="section-label">術中体温記録（オプション）</p>
+  <div class="temp-section">
+    <button class="temp-tracker-toggle"
+      id="tracker-toggle"
+      aria-expanded="false"
+      aria-controls="tracker-body"
+      onclick="toggleTracker()">
+      <span>体温トラッカーを開く</span>
+      <span class="toggle-icon">▾</span>
+    </button>
+    <div class="temp-tracker-body" id="tracker-body" role="region" aria-label="体温記録">
+      <div class="temp-entries" id="temp-entries"></div>
+      <button class="btn-add-temp" onclick="addTempEntry()" aria-label="体温記録を追加">
+        + 記録を追加
+      </button>
+      <div class="temp-alert-banner" id="temp-alert-banner" role="alert">
+        <div class="temp-alert-banner-title">⚠ 低体温アラート</div>
+        <div class="temp-alert-banner-body">
+          core temp &lt; 36.0°C を検出。<br>
+          能動加温（強制温風加温）を開始・強化し、加温静脈輸液を使用してください。<br>
+          担当医師に即時報告。術後はPACU体温≥36.0°C確認まで退室禁止。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CLEAR BUTTON -->
+  <button class="btn-clear" onclick="clearData()" aria-label="データをクリア">
+    データをクリア
+  </button>
+</main>
+
+<footer class="app-footer">
+  <p class="disclaimer">
+    本ツールは臨床判断を<strong>補助</strong>するための教育・支援ツールです。
+    表示される計算値・推奨値はガイドラインに基づく参考情報であり、
+    最終的な臨床判断は必ず担当医師が行ってください。
+    患者データは端末内にのみ保存され、外部に送信されることはありません。
+  </p>
+  <p class="citation">
+    参考: NICE Clinical Guideline CG65 (2008, addendum 2016) Inadvertent Perioperative Hypothermia.<br>
+    対象: 成人待機的手術。小児・新生児・緊急手術・体外循環症例には適用外。
+  </p>
+</footer>
+
+<script>
+// ===== RISK CALCULATION ENGINE =====
+// NICE CG65 risk factors for inadvertent perioperative hypothermia
+// Returns: { score: 0-6, level: 'low'|'med'|'high', factors: string[] }
+
+const RISK_THRESHOLDS = {
+  // score 0-1 = LOW, 2-3 = MEDIUM, 4+ = HIGH
+  LOW: 1,
+  MED: 3,
+};
+
+const MANAGEMENT = {
+  low: {
+    label: '低リスク',
+    dots: ['accent','accent','accent'],
+    items: [
+      { dot: 'accent', text: '<strong>標準モニタリング</strong>で対応可能' },
+      { dot: 'accent', text: '麻酔導入前30分に体温測定（目標 ≥36.5°C）' },
+      { dot: 'accent', text: '術中 <strong>30分毎</strong>に体温測定' },
+      { dot: 'accent', text: '受動加温（毛布・温め輸液）を推奨' },
+    ],
+  },
+  med: {
+    label: '中リスク',
+    items: [
+      { dot: 'warn', text: '<strong>能動加温を導入時から開始</strong>' },
+      { dot: 'warn', text: '強制温風加温（Bair Hugger等）の使用を推奨' },
+      { dot: 'warn', text: '加温静脈輸液（500mL以上の場合）' },
+      { dot: 'accent', text: '術中 <strong>30分毎</strong>に体温測定' },
+      { dot: 'accent', text: '導入前体温 &lt;36.0°C の場合は手術を延期し加温を優先' },
+    ],
+  },
+  high: {
+    label: '高リスク',
+    items: [
+      { dot: 'danger', text: '<strong>術前加温（導入30分前から）必須</strong>' },
+      { dot: 'danger', text: '能動加温を手術開始から継続的に実施' },
+      { dot: 'danger', text: '全輸液を加温（加温輸液ポンプ使用）' },
+      { dot: 'danger', text: '術中 <strong>30分毎</strong>に体温測定・記録' },
+      { dot: 'danger', text: '36.0°C を下回った時点で即時対応プロトコル発動' },
+      { dot: 'accent', text: 'PACU: ≥36.0°C確認まで15分毎モニタリング継続' },
+    ],
+  },
+};
+
+const MON_PRE = {
+  low:  '測定（任意）',
+  med:  '測定（推奨）',
+  high: '必須',
+};
+const MON_INTRAOP = {
+  low:  '30分毎',
+  med:  '30分毎',
+  high: '30分毎',
+};
+
+// ===== STATE =====
+let state = {
+  age: null,
+  bmi: null,
+  duration: null,
+  surgType: null,   // 'superficial' | 'mixed' | 'cavity'
+  aneType: null,    // 'ga' | 'regional' | 'combined'
+  baselineTemp: null,
+  tempEntries: [], // { time: string, val: number|null }
+  trackerOpen: false,
+};
+
+// ===== RISK CALCULATION =====
+function calcRisk(s) {
+  if (s.age === null || s.bmi === null || s.duration === null
+      || s.surgType === null || s.aneType === null) {
+    return null;
+  }
+  let score = 0;
+  const factors = [];
+
+  // Age ≥60: high risk for hypothermia
+  if (s.age >= 60) { score += 1; factors.push('高齢(≥60歳)'); }
+  // Low BMI (<18.5) — less insulation / thermal mass
+  if (s.bmi < 18.5) { score += 1; factors.push('低体重(BMI<18.5)'); }
+  // Obese: paradoxically harder to warm, core-periphery redistribution
+  if (s.bmi >= 35) { score += 1; factors.push('高度肥満(BMI≥35)'); }
+  // Long surgery ≥90min
+  if (s.duration >= 90) { score += 1; factors.push('長時間手術(≥90分)'); }
+  // Medium-length surgery (60-89min): lower weight
+  else if (s.duration >= 60) { score += 0.5; factors.push('中等度手術時間(60-89分)'); }
+  // Cavity surgery: large heat/evaporative loss
+  if (s.surgType === 'cavity') { score += 1.5; factors.push('体腔内手術(腹/胸/開頭)'); }
+  else if (s.surgType === 'mixed') { score += 0.5; factors.push('混合術式'); }
+  // GA causes major thermoregulatory disruption vs regional
+  if (s.aneType === 'ga') { score += 1; factors.push('全身麻酔'); }
+  else if (s.aneType === 'combined') { score += 0.5; factors.push('全身+区域麻酔（併用）'); }
+  // Low baseline temp
+  if (s.baselineTemp !== null && s.baselineTemp < 36.5) {
+    score += 1; factors.push('術前体温低め(<36.5°C)');
+  }
+
+  let level;
+  if (score <= RISK_THRESHOLDS.LOW) level = 'low';
+  else if (score <= RISK_THRESHOLDS.MED) level = 'med';
+  else level = 'high';
+
+  return { score: Math.round(score * 10) / 10, level, factors };
+}
+
+// ===== RENDER =====
+function render() {
+  const result = calcRisk(state);
+
+  // Hero
+  const riskVal = document.getElementById('risk-value');
+  const riskBadge = document.getElementById('risk-badge');
+  const riskDetail = document.getElementById('risk-score-detail');
+
+  if (!result) {
+    riskVal.textContent = '—';
+    riskVal.className = 'risk-value';
+    riskBadge.textContent = '入力待ち';
+    riskBadge.className = 'risk-badge';
+    riskDetail.textContent = '';
+  } else {
+    const LABELS = { low: '低', med: '中', high: '高' };
+    riskVal.textContent = LABELS[result.level];
+    riskVal.className = `risk-value ${result.level}`;
+    riskBadge.textContent = MANAGEMENT[result.level].label;
+    riskBadge.className = `risk-badge ${result.level}`;
+    riskDetail.textContent = result.factors.length
+      ? `リスク因子: ${result.factors.join(' / ')}`
+      : 'リスク因子なし';
+  }
+
+  // Management panel
+  const mgmtBody = document.getElementById('mgmt-body');
+  if (!result) {
+    mgmtBody.innerHTML = '<div class="mgmt-row"><div class="mgmt-dot"></div><div class="mgmt-text">患者情報を入力してください</div></div>';
+  } else {
+    const mgmt = MANAGEMENT[result.level];
+    mgmtBody.innerHTML = mgmt.items.map(item =>
+      `<div class="mgmt-row">
+        <div class="mgmt-dot ${item.dot}"></div>
+        <div class="mgmt-text">${item.text}</div>
+      </div>`
+    ).join('');
+  }
+
+  // Monitoring intervals
+  const level = result ? result.level : null;
+  document.getElementById('mon-pre').textContent = level ? MON_PRE[level] : '—';
+  document.getElementById('mon-pre').className = level ? 'monitor-interval accent' : 'monitor-interval';
+  document.getElementById('mon-intraop').textContent = level ? MON_INTRAOP[level] : '—';
+  document.getElementById('mon-intraop').className = level ? 'monitor-interval accent' : 'monitor-interval';
+
+  // Temp tracker alert banner
+  renderTempAlert();
+}
+
+// ===== TEMP TRACKER =====
+let tempEntryCount = 0;
+
+function toggleTracker() {
+  const toggle = document.getElementById('tracker-toggle');
+  const body   = document.getElementById('tracker-body');
+  const open   = toggle.getAttribute('aria-expanded') === 'false';
+  toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) {
+    body.classList.add('open');
+    if (state.tempEntries.length === 0) addTempEntry();
+  } else {
+    body.classList.remove('open');
+  }
+  state.trackerOpen = open;
+  saveState();
+}
+
+function addTempEntry() {
+  tempEntryCount++;
+  const entries = document.getElementById('temp-entries');
+  const idx = entries.children.length;
+  const minuteLabel = idx === 0 ? '導入時' : `T+${idx * 30}分`;
+
+  const row = document.createElement('div');
+  row.className = 'temp-entry-row';
+  row.dataset.idx = idx;
+  row.innerHTML = `
+    <span class="temp-time-label">${minuteLabel}</span>
+    <div class="temp-input-wrap">
+      <input type="number" class="temp-input"
+        inputmode="decimal"
+        placeholder="36.5"
+        min="30" max="42" step="0.1"
+        aria-label="${minuteLabel} 体温（℃）"
+        oninput="onTempChange(this, ${idx})">
+      <span class="temp-unit">°C</span>
+    </div>
+    <span class="temp-alert-badge" id="temp-badge-${idx}"></span>
+  `;
+  entries.appendChild(row);
+
+  // Sync state
+  while (state.tempEntries.length <= idx) state.tempEntries.push({ time: '', val: null });
+  state.tempEntries[idx].time = minuteLabel;
+  saveState();
+}
+
+function onTempChange(input, idx) {
+  const val = input.value === '' ? null : parseFloat(input.value);
+  while (state.tempEntries.length <= idx) state.tempEntries.push({ time: '', val: null });
+  state.tempEntries[idx].val = val;
+
+  const badge = document.getElementById(`temp-badge-${idx}`);
+  if (val !== null && val < 36.0) {
+    input.classList.add('alert-val');
+    badge.textContent = '低';
+  } else {
+    input.classList.remove('alert-val');
+    badge.textContent = '';
+  }
+  renderTempAlert();
+  saveState();
+}
+
+function renderTempAlert() {
+  const banner = document.getElementById('temp-alert-banner');
+  const hasAlert = state.tempEntries.some(e => e.val !== null && e.val < 36.0);
+  if (hasAlert) banner.classList.add('visible');
+  else           banner.classList.remove('visible');
+}
+
+// ===== INPUT HANDLERS =====
+function setSurg(btn) {
+  document.querySelectorAll('.seg-btn').forEach(b => b.setAttribute('aria-pressed','false'));
+  btn.setAttribute('aria-pressed','true');
+  state.surgType = btn.dataset.surg;
+  render();
+  saveState();
+}
+function setAne(btn) {
+  document.querySelectorAll('.ane-btn').forEach(b => b.setAttribute('aria-pressed','false'));
+  btn.setAttribute('aria-pressed','true');
+  state.aneType = btn.dataset.ane;
+  render();
+  saveState();
+}
+
+document.getElementById('age').addEventListener('input', function() {
+  const v = parseFloat(this.value);
+  state.age = (this.value === '' || isNaN(v) || v <= 0) ? null : v;
+  render(); saveState();
+});
+document.getElementById('bmi').addEventListener('input', function() {
+  const v = parseFloat(this.value);
+  state.bmi = (this.value === '' || isNaN(v) || v <= 0) ? null : v;
+  render(); saveState();
+});
+document.getElementById('duration').addEventListener('input', function() {
+  const v = parseFloat(this.value);
+  state.duration = (this.value === '' || isNaN(v) || v <= 0) ? null : v;
+  render(); saveState();
+});
+document.getElementById('baseline-temp').addEventListener('input', function() {
+  const v = parseFloat(this.value);
+  state.baselineTemp = (this.value === '' || isNaN(v)) ? null : v;
+  render(); saveState();
+});
+
+// ===== LOCALSTORAGE =====
+const LS_KEY = 'thermocalc_v1';
+
+function saveState() {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+  } catch(e) { /* quota / private mode — silent fail */ }
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    if (typeof s !== 'object' || s === null) return;
+
+    // Validate each field
+    state.age = (typeof s.age === 'number' && s.age > 0 && s.age <= 120) ? s.age : null;
+    state.bmi = (typeof s.bmi === 'number' && s.bmi > 0 && s.bmi <= 70) ? s.bmi : null;
+    state.duration = (typeof s.duration === 'number' && s.duration >= 0) ? s.duration : null;
+    state.surgType = ['superficial','mixed','cavity'].includes(s.surgType) ? s.surgType : null;
+    state.aneType  = ['ga','regional','combined'].includes(s.aneType) ? s.aneType : null;
+    state.baselineTemp = (typeof s.baselineTemp === 'number') ? s.baselineTemp : null;
+    state.trackerOpen = !!s.trackerOpen;
+    state.tempEntries = Array.isArray(s.tempEntries)
+      ? s.tempEntries.filter(e => typeof e === 'object' && e !== null).map(e => ({
+          time: typeof e.time === 'string' ? e.time : '',
+          val: typeof e.val === 'number' ? e.val : null,
+        }))
+      : [];
+  } catch(e) { /* corrupted — start fresh */ }
+}
+
+function restoreUI() {
+  if (state.age !== null) {
+    const el = document.getElementById('age');
+    el.value = state.age;
+  }
+  if (state.bmi !== null) {
+    document.getElementById('bmi').value = state.bmi;
+  }
+  if (state.duration !== null) {
+    document.getElementById('duration').value = state.duration;
+  }
+  if (state.baselineTemp !== null) {
+    document.getElementById('baseline-temp').value = state.baselineTemp;
+  }
+  if (state.surgType) {
+    const btn = document.querySelector(`.seg-btn[data-surg="${state.surgType}"]`);
+    if (btn) btn.setAttribute('aria-pressed','true');
+  }
+  if (state.aneType) {
+    const btn = document.querySelector(`.ane-btn[data-ane="${state.aneType}"]`);
+    if (btn) btn.setAttribute('aria-pressed','true');
+  }
+  if (state.trackerOpen || state.tempEntries.length > 0) {
+    const toggle = document.getElementById('tracker-toggle');
+    const body   = document.getElementById('tracker-body');
+    toggle.setAttribute('aria-expanded','true');
+    body.classList.add('open');
+    // Rebuild temp entries
+    state.tempEntries.forEach((entry, idx) => {
+      addTempEntry();
+      const row = document.getElementById('temp-entries').children[idx];
+      if (row) {
+        const input = row.querySelector('.temp-input');
+        if (input && entry.val !== null) {
+          input.value = entry.val;
+          onTempChange(input, idx);
+        }
+      }
+    });
+  }
+}
+
+function clearData() {
+  if (!confirm('記録をすべてクリアしますか？')) return;
+  try { localStorage.removeItem(LS_KEY); } catch(e) {}
+  // Reset state
+  state = {
+    age: null, bmi: null, duration: null,
+    surgType: null, aneType: null,
+    baselineTemp: null, tempEntries: [], trackerOpen: false,
+  };
+  // Reset inputs
+  document.getElementById('age').value = '';
+  document.getElementById('bmi').value = '';
+  document.getElementById('duration').value = '';
+  document.getElementById('baseline-temp').value = '';
+  document.querySelectorAll('.seg-btn').forEach(b => b.setAttribute('aria-pressed','false'));
+  document.querySelectorAll('.ane-btn').forEach(b => b.setAttribute('aria-pressed','false'));
+  // Reset tracker
+  document.getElementById('temp-entries').innerHTML = '';
+  document.getElementById('tracker-toggle').setAttribute('aria-expanded','false');
+  document.getElementById('tracker-body').classList.remove('open');
+  document.getElementById('temp-alert-banner').classList.remove('visible');
+  tempEntryCount = 0;
+  render();
+}
+
+// ===== SELF-CHECK (development verification) =====
+function selfCheck() {
+  const cases = [
+    // [age, bmi, duration, surgType, aneType, baselineTemp, expectedLevel]
+    [25,  22,  45,  'superficial', 'ga',       null, 'low'],   // young, normal, short, surface, GA → low
+    [72,  19, 120,  'cavity',      'ga',       null, 'high'],  // elderly, underweight, long, cavity, GA → high
+    [55,  25,  90,  'mixed',       'ga',       null, 'med'],   // mid-age, normal, 90min, mixed, GA → med
+    [40,  23,  60,  'superficial', 'regional', null, 'low'],   // young, normal, 60min, surface, regional → low
+    [68,  30,  90,  'cavity',      'combined', 36.2, 'high'],  // elderly, 90min, cavity, combined, low baseline → high
+    [30,  17,  45,  'superficial', 'ga',       null, 'med'],   // underweight → score boost
+    [80,  22,  30,  'superficial', 'regional', null, 'low'],   // elderly only → score=1 → low
+  ];
+  let pass = 0, fail = 0;
+  cases.forEach(([age, bmi, dur, surg, ane, bt, expected], i) => {
+    const s = { age, bmi, duration: dur, surgType: surg, aneType: ane, baselineTemp: bt, tempEntries: [] };
+    const r = calcRisk(s);
+    if (r && r.level === expected) {
+      pass++;
+    } else {
+      console.warn(`[selfCheck] Case ${i+1} FAIL: expected ${expected}, got ${r ? r.level : 'null'} (score ${r ? r.score : '—'})`);
+      fail++;
+    }
+  });
+  console.log(`[ThermoCalc selfCheck] ${pass}/${cases.length} PASS, ${fail} FAIL`);
+  return fail === 0;
+}
+
+// ===== INIT =====
+loadState();
+restoreUI();
+render();
+selfCheck();
+</script>
+</body>
+</html>
